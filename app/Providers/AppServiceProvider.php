@@ -25,6 +25,6 @@ class AppServiceProvider extends ServiceProvider
     public function boot()
     {
         // Macro to use auto generate number module wise
-        // \Illuminate\Support\Str::mixin(new StrMixin);
+        \Illuminate\Support\Str::mixin(new StrMixin);
     }
 }

@@ -6,6 +6,10 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
 use DateTime;
 use DateTimeZone;
+use Illuminate\Filesystem\FilesystemManager;
+use Illuminate\Http\Request;
+use Throwable;
+use PDF;
 
 class FunctionHelper
 {
@@ -53,6 +57,35 @@ class FunctionHelper
             $number = $addspace ? $number . ' ' . $suffix : $number . $suffix;
         }
         return (string) $number;
+    }
+
+    /**
+     * Get Currency Code
+     * @param $data
+     * @return array
+     */
+    public static function getCurrencyCode()
+    {
+        return config('constants.currency_symbol', 'BD');
+    }
+
+    /**
+     * Format Price Value
+     * @param $data
+     * @return array
+     */
+    public static function formatPrice($price, $prefix = true, $isString = true, $separator = ' ')
+    {
+        try {
+            if ($isString) {
+                $price = $price != '' ? number_format($price, 2, '.', ',') : number_format(0, 2, '.', ',');
+            } else {
+                $price = $price != '' ? intval($price * 1e2) / 1e2 : intval(0 * 1e2) / 1e2;
+            }
+        } catch (Throwable $e) {
+            return $price;
+        }
+        return $prefix == true ? self::getCurrencyCode() . $separator . $price : $price;
     }
 
     public static function timestampToDateTimeString($timestamp)
@@ -125,11 +158,11 @@ class FunctionHelper
 
         $format = config('constants.format.datetime');
         $dateTime = DateTime::createFromFormat($format, $date);
+        $dateTime->setTimeZone(new DateTimeZone('UTC'));
 
         if (!$dateTime) {
             return $date;
         } else {
-            $dateTime->setTimeZone(new DateTimeZone('UTC'));
             return $formatResult ? $dateTime->format('Y-m-d H:i:s') : $dateTime;
         }
     }
@@ -182,7 +215,9 @@ class FunctionHelper
 
     public static function formatTime($t)
     {
+        // http://stackoverflow.com/a/3172665
         $f = ':';
+
         return sprintf('%02d%s%02d%s%02d', floor($t / 3600), $f, ($t / 60) % 60, $f, $t % 60);
     }
 
@@ -232,10 +267,17 @@ class FunctionHelper
             $entity = self::getEntity();
             $module = $entity['toLower'];
         }
+        $module = Str::singular($module) == 'invoice' ? 'quote' : $module;
         $ucmodule = Str::ucfirst(Str::singular($module));
         $repo = "\App\Repositories\\" . "{$ucmodule}Repository";
-
-        $repository = (new $repo(new \Illuminate\Container\Container));
+        if ($module == 'documents') {
+            $awsRepo = new \App\Repositories\AwsS3Repository(new FilesystemManager(app()));
+            $repository = (new $repo(new \Illuminate\Container\Container, $awsRepo));
+        } elseif ($module == 'awss3') {
+            $repository = new \App\Repositories\AwsS3Repository(new FilesystemManager(app()));
+        } else {
+            $repository = (new $repo(new \Illuminate\Container\Container));
+        }
         throw_if(is_null($repository), BadRequestHttpException::class, "Repostory for {$module} doesn't exist.");
         return $repository;
     }
@@ -246,5 +288,136 @@ class FunctionHelper
             return false;
         }
         return true;
+    }
+
+    public static function generateRandomString($stringLength, $onlyDigits = false)
+    {
+        if ($onlyDigits) {
+            return self::randomNumber($stringLength);
+        } else {
+            return substr(
+                bin2hex(random_bytes($stringLength)),
+                0,
+                $stringLength
+            );
+        }
+    }
+
+    public static function randomNumber(int $length = 1)
+    {
+        $result = '';
+
+        for ($i = 0; $i < $length; $i++) {
+            $result .= mt_rand(0, 9);
+        }
+
+        return $result;
+    }
+
+    public static function patternNumber()
+    {
+        return '#BM' . rand(1, 99999999);
+    }
+
+    public static function replaceValuesInPattern($counter, $pattern, $field)
+    {
+        $year = date('y');
+        $search = ['{$year}', '{$counter}', config("constants.number_patterns.$field.0", '{$clientIdNumber}')];
+        $replace = [$year, $counter];
+        preg_match('/{\$date:(.*?)}/', $pattern, $matches);
+        if (count($matches) > 1) {
+            $format = $matches[1];
+            $search[] = $matches[0];
+            $date = Carbon::now(session('timezone', config('constants.display_date_timezone')))->format($format);
+            $replace[] = str_replace($format, $date, $matches[1]);
+        }
+        $pattern = str_replace($search, $replace, $pattern);
+        return $pattern;
+    }
+
+    public static function padNumber($number = null)
+    {
+        return $number !== null && $number !== ' ' ? str_pad($number, config('constants.pad_number', 4), '0', STR_PAD_LEFT) : $number;
+    }
+
+    public static function preparePdf($input, $view, $encode = true, $download = false, $name = '')
+    {
+        $options = [
+            'orientation' => 'portrait',
+            'encoding' => 'UTF-8',
+            'margin-top' => '25',
+            'margin-right' => '15',
+        ];
+
+        $pdf = PDF::loadView($view, ['input' => $input]);
+        $pdf->setOptions($options);
+        // dd($pdf);
+        if ($download) {
+            $name = empty($name) ? rand(999999, 1000000) . '.pdf' : $name;
+            return $pdf->download($name);
+        } else {
+            return $encode == true ? base64_encode($pdf->inline()) : $pdf->inline();
+        }
+    }
+
+    public static function totalCredit($credit)
+    {
+        $total = ($credit['profile'] ?? 0) +
+            ($credit['sms'] ?? 0);
+        return $total;
+    }
+
+    public static function addDuration($duration = 0, $from_date = null, $formatResult = false, $toSqlDate = false, $includeTime = false, $timezone = 'UTC')
+    {
+        $format = config('constants.format.date');
+        $date = !empty($from_date) ? $from_date : self::today($formatResult, $toSqlDate, $includeTime, $timezone);
+        $date = self::dateToString($date, false);
+        if ($duration < 0) {
+            $date = $date->subDays(abs($duration));
+        } else {
+            $date = $date->addDays($duration);
+        }
+        // dd($date->format('Y-m-d H:i:s'), $formatResult, $toSqlDate, $includeTime);
+        if ($formatResult) {
+            return $date->format($format);
+        } elseif ($toSqlDate) {
+            if ($includeTime) {
+                return $date->format('Y-m-d H:i:s');
+            }
+            return $date->format('Y-m-d');
+        } else {
+            return $date;
+        }
+    }
+
+    public static function consumedCredits($total, $deduct, $html = false)
+    {
+        $profile = 0;
+        $sms = 0;
+
+        if ($total['profile'] > $deduct['profile']) {
+            $profile = $total['profile'] - $deduct['profile'];
+        }
+
+        if ($total['sms'] > $deduct['sms']) {
+            $sms = $total['sms'] - $deduct['sms'];
+        }
+
+        if ($html) {
+            $data = trans('label.profile_credits') . ':' . $profile . '<br/>' . trans('label.sms_credits') . ':' . $sms;
+        } else {
+            $data = $profile + $sms;
+        }
+        return $data;
+    }
+
+    public static function averageScore($achieved_score, $total_score, $criteria_max_level)
+    {
+        $averageScore = 0;
+        try {
+            $averageScore = round(($achieved_score / $total_score) * ($criteria_max_level));
+        } catch (Throwable $e) {
+        }
+        return $averageScore;
     }
 }

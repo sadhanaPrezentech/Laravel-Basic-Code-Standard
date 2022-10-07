@@ -2,12 +2,58 @@
 
 namespace App\Mixins;
 
+use App\Helpers\FunctionHelper;
+use App\Models\Configuration;
 use Illuminate\Database\Eloquent\Model;
 use ReflectionClass;
 use Illuminate\Support\Str;
+use Throwable;
 
 class StrMixin
 {
+    /**
+     * getNextNumber function
+     *
+     * @param string $field: name of field to get/use to store.
+     * @param string $next_id: next number to get auto generated and to be formatted.
+     * @param string $client_id / null: Client Code that should be included in some modules[invoice,quote,etc..]
+     * @param string $pattern / null: before saving configuration to show as an example.
+     *
+     * @return void
+     */
+    public function getNextNumber()
+    {
+        return function ($field, $next_id, $pattern = null) {
+            if (empty($field)) {
+                return null;
+            }
+
+            try {
+                // apply padding to $counter
+                $counter = FunctionHelper::padNumber($next_id);
+
+                $configuration = Configuration::patternOfModule($field)->first();
+
+                $type = 'pattern';
+                // $pattern will be used only while doing configure field "Example" value.
+                if (!empty($configuration) && empty($pattern)) {
+                    $pattern = $configuration->setting_value;
+                    $type = $configuration->setting_type;
+                }
+
+                if (empty($configuration)) {
+                    return $counter;
+                } elseif ($type == config('constants.configuration_setting_type.1', 'prefix')) {
+                    return $pattern . $counter;
+                } else {
+                    return FunctionHelper::replaceValuesInPattern($counter, $pattern, $field);
+                }
+            } catch (Throwable $e) {
+                // dd($e);
+                return null;
+            }
+        };
+    }
 
     public function setModulePermission()
     {
@@ -73,6 +119,52 @@ class StrMixin
                 return null;
             }
             return trans("label.{$label}");
+        };
+    }
+
+    public function encryptVerificationData()
+    {
+        return function ($data) {
+            return encrypt(json_encode($data));
+        };
+    }
+
+    public function decryptVerificationData()
+    {
+        return function (string $data) {
+            return json_decode(decrypt($data));
+        };
+    }
+
+    public function formatePhoneNumber()
+    {
+        return function ($request) {
+            $prefix = config('constants.phone_prefix');
+
+            if (is_string($request) && !empty($request)) {
+                return $prefix . Str::removePhonePrefix($request);
+            } elseif (!empty($request['phone_number'])) {
+                $request['phone_number'] = $prefix . Str::removePhonePrefix($request['phone_number']);
+            }
+
+            return $request;
+        };
+    }
+
+    public function removePhonePrefix()
+    {
+        return function ($phoneNumber) {
+            return str_replace(config('constants.phone_prefix'), '', $phoneNumber);
+        };
+    }
+
+    public function base64ImageSrc()
+    {
+        return function ($mime, $file) {
+            if (empty($file) || empty($mime)) {
+                return '';
+            }
+            return 'data:' . $mime . ';base64,' . $file;
         };
     }
 }
