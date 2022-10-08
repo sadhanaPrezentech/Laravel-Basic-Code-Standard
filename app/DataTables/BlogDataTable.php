@@ -19,7 +19,7 @@ class BlogDataTable extends BaseDataTable
 
     public function getFormParams()
     {
-        $this->orderColumnNo = 2;
+        $this->orderColumnNo = 3;
         $this->setFormParams();
     }
 

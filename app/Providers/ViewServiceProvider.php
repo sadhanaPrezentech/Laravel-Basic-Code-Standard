@@ -46,10 +46,10 @@ class ViewServiceProvider extends BaseViewServiceProvider
             }
         });
 
-        // composer for roles create/edit/show
-        // View::composer(
-        //     ['roles.create', 'roles.edit', 'roles.show'],
-        //     'App\Http\View\Composers\RoleComposer'
-        // );
+        // composer for User create/edit/show
+        View::composer(
+            ['users.create', 'users.edit', 'users.show'],
+            'App\Http\View\Composers\UserComposer'
+        );
     }
 }

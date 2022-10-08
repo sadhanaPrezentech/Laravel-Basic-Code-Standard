@@ -24,10 +24,17 @@ class UserComposer
     public function compose(View $view)
     {
         $response = [];
-
-
+        $roleItems = Role::pluck('title', 'name')->toArray();
+        if (in_array($view->getName(), ['users.edit', 'users.show'])) {
+            $roles = $view->user->roles ?? null;
+            $view->user->role = $view->user->getRoleNames();
+            if (!empty($roles)) {
+                $view->user->role_title = $roles->first()->title;
+            }
+        }
         $view->with([
             'response' => $response,
+            'roleItems' => $roleItems
         ]);
     }
 }

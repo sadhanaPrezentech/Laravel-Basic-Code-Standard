@@ -89,7 +89,7 @@ abstract class BaseRepository
     {
         $query = $this->model->newQuery();
         $table = $this->model->getTable();
-        // dd($table);
+        // dd($search);
         if (count($search)) {
             $casts = $this->model->getCasts();
             foreach ($search as $key => $value) {

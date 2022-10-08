@@ -14,3 +14,9 @@
     <p>{{ FunctionHelper::fromSqlDateTime($user->created_at->toDateTimeString(), true, 'd-m-Y')??''}}</p>
 </div>
 
+<!-- Role Field -->
+<div class="col-sm-3">
+    {!! Form::label('role', 'Role') !!}
+    <p>{{ ucFirst($user->role_title) ?? ''}}</p>
+</div>
+

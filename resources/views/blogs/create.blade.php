@@ -15,9 +15,7 @@
         <div class="card">
             {!! Form::open(['route' => $entity['url'].'.store', 'id' => 'frm_'.$entity['targetModel']]) !!}
             <div class="card-body">
-                <div class="col-sm-8">
                 @include($entity['view'].'.fields')
-                </div>
             </div>
             <div class="card-footer text-right">
                 @include('components.form-buttons')
